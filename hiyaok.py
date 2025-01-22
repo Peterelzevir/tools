@@ -22,6 +22,9 @@ from telethon.errors import (
 import asyncio
 import json
 import vobject
+import asyncio
+import nest_asyncio
+nest_asyncio.apply()
 import time
 from datetime import datetime
 import logging
@@ -817,7 +820,7 @@ async def cancel_handler(event):
         await event.respond("ℹ️ No active operation to cancel.")
 
 # Main function to run the bot
-async def main():
+def main():
     """Main function to start the bot"""
     # Ensure all required directories exist
     ensure_directories()
@@ -833,28 +836,31 @@ async def main():
     
     try:
         print("📡 Starting message handler...")
-        await bot.run_until_disconnected()
+        # Create and get event loop
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(bot.run_until_disconnected())
     except Exception as e:
         print(f"❌ Error: {str(e)}")
         logger.error(f"Bot crashed: {str(e)}")
+    finally:
+        loop.close()
 
 # Run the bot
 if __name__ == '__main__':
-    # Setup logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('bot.log'),
-            logging.StreamHandler()
-        ]
-    )
-    
-    logger.info("Bot is starting...")
-    
     try:
-        # Run the bot
-        asyncio.run(main())
+        # Setup logging with proper file mode
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('bot.log', mode='a'),
+                logging.StreamHandler()
+            ]
+        )
+        
+        logger.info("Bot is starting...")
+        main()
+        
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
