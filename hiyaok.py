@@ -19,6 +19,7 @@ from telethon.errors import (
     UserPrivacyRestrictedError,
     UserNotMutualContactError
 )
+from telethon.sessions import StringSession
 import asyncio
 import json
 import vobject
@@ -35,7 +36,7 @@ API_HASH = "03464b6c80a5051eead6835928e48189"
 BOT_TOKEN = "7679634554:AAEdPm3H0P0KsfZSTe9x7DHzKa49JecWj8M"
 
 # Safe delays (in seconds)
-INVITE_DELAY = 15  # Delay between invites
+INVITE_DELAY = 5  # Delay between invites
 ACCOUNT_SWITCH_DELAY = 5  # Delay when switching accounts
 ERROR_DELAY = 5  # Delay after error
 MAX_RETRIES = 3  # Maximum retry attempts
@@ -716,9 +717,17 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
         await progress.update_status("Connecting to account...", force=True)
         
         try:
-            client = TelegramClient(f'sessions/{phone}', API_ID, API_HASH)
+            # Load session string
+            session_string = user_sessions[user_id][phone]
+            
+            # Create client from session string
+            client = TelegramClient(StringSession(session_string), API_ID, API_HASH)
             await client.connect()
-            await client.sign_in(string_session=user_sessions[user_id][phone])
+            
+            # Check authorization
+            if not await client.is_user_authorized():
+                progress.account_stats[phone]['errors'].append("Session expired, please reconnect account")
+                continue
             
             # Join group first
             try:
@@ -763,7 +772,6 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
                 except FloodWaitError as e:
                     progress.account_stats[phone]['errors'].append(f"FloodWait: {e.seconds}s")
                     await progress.update_status(f"⚠️ FloodWait detected, switching account...")
-                    # Don't increment current_number_index to retry with next account
                     break
                     
                 except Exception as e:
@@ -784,7 +792,7 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
             await progress.update_status(f"❌ Error with account {phone}: {str(e)}")
             await asyncio.sleep(ERROR_DELAY)
     
-    # Final report with detailed statistics
+    # Final report
     final_report = (
         "📊 **Invite Process Completed**\n\n"
         f"📱 Total Numbers Processed: {len(numbers)}\n"
