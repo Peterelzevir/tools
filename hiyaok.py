@@ -369,7 +369,8 @@ async def code_handler(event):
                     user_sessions[user_id] = {}
                 user_sessions[user_id][phone] = string_session
                 save_sessions()
-                await event.respond("✅ Account successfully connected with 2FA!\n\n"
+                await event.respond(
+                    "✅ Account successfully connected with 2FA!\n\n"
                     f"📱 Phone: {phone}\n"
                     "🔑 Session saved"
                 )
@@ -388,6 +389,7 @@ async def code_handler(event):
 
 @bot.on(events.CallbackQuery(pattern='listaccount'))
 @admin_only
+@require_session
 async def list_callback(event):
     user_id = event.sender_id
     if not has_sessions(user_id):
