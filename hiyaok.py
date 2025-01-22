@@ -187,6 +187,7 @@ async def get_pagination_buttons(accounts, page=0, items_per_page=5):
     return buttons
 
 @bot.on(events.NewMessage(pattern='/start'))
+@admin_only
 async def start_handler(event):
     user_id = event.sender_id
     admins = load_admins()
@@ -321,7 +322,6 @@ async def phone_handler(event):
 @bot.on(events.NewMessage(func=lambda e: user_states.get(e.sender_id, {}).get('state') in ['awaiting_code', 'awaiting_2fa']))
 @admin_only
 async def code_handler(event):
-    """Handle verification code and 2FA input"""
     user_id = event.sender_id
     state = user_states[user_id]
     client = state['client']
@@ -369,8 +369,7 @@ async def code_handler(event):
                     user_sessions[user_id] = {}
                 user_sessions[user_id][phone] = string_session
                 save_sessions()
-                await event.respond(
-                    "✅ Account successfully connected with 2FA!\n\n"
+                await event.respond("✅ Account successfully connected with 2FA!\n\n"
                     f"📱 Phone: {phone}\n"
                     "🔑 Session saved"
                 )
