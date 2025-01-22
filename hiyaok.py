@@ -306,7 +306,7 @@ async def phone_handler(event):
         phone = '+' + phone
     
     try:
-        client = TelegramClient(f'sessions/{phone}', API_ID, API_HASH)
+        client = TelegramClient(StringSession(), API_ID, API_HASH)
         await client.connect()
         
         if not await client.is_user_authorized():
@@ -320,7 +320,7 @@ async def phone_handler(event):
             }
             await event.respond("📤 Code sent! Please enter the verification code:")
         else:
-            string_session = client.session.save()
+            string_session = StringSession.save(client.session)
             if user_id not in user_sessions:
                 user_sessions[user_id] = {}
             user_sessions[user_id][phone] = string_session
@@ -345,7 +345,7 @@ async def code_handler(event):
         if state['state'] == 'awaiting_code':
             try:
                 await client.sign_in(phone, event.text.strip())
-                string_session = client.session.save()
+                string_session = StringSession.save(client.session)
                 if user_id not in user_sessions:
                     user_sessions[user_id] = {}
                 user_sessions[user_id][phone] = string_session
@@ -378,7 +378,7 @@ async def code_handler(event):
         elif state['state'] == 'awaiting_2fa':
             try:
                 await client.sign_in(password=event.text.strip())
-                string_session = client.session.save()
+                string_session = StringSession.save(client.session)
                 if user_id not in user_sessions:
                     user_sessions[user_id] = {}
                 user_sessions[user_id][phone] = string_session
@@ -400,11 +400,6 @@ async def code_handler(event):
                         f"❌ Invalid 2FA password. Please try again.\n"
                         f"Attempts remaining: {3 - state['password_attempts']}"
                     )
-    
-    except Exception as e:
-        logger.error(f"Error in code handler: {str(e)}")
-        await event.respond(f"❌ Error: {str(e)}")
-        user_states.pop(user_id, None)
 
 @bot.on(events.CallbackQuery(pattern='listaccount'))
 @admin_only
