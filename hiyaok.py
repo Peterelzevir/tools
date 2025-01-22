@@ -1,12 +1,3 @@
-"""
-Telegram Manager Bot
-Features:
-- Admin-only access
-- Multiple admin support
-- Session management with 2FA
-- Invite management with flood protection
-"""
-
 import os
 from telethon import TelegramClient, events, Button, functions
 from telethon.tl.functions.channels import JoinChannelRequest, InviteToChannelRequest
@@ -23,12 +14,12 @@ from telethon.sessions import StringSession
 import asyncio
 import json
 import vobject
-import asyncio
 import nest_asyncio
-nest_asyncio.apply()
 import time
 from datetime import datetime
 import logging
+
+nest_asyncio.apply()
 
 # Configuration
 API_ID = "23207350"
@@ -36,16 +27,19 @@ API_HASH = "03464b6c80a5051eead6835928e48189"
 BOT_TOKEN = "7679634554:AAEdPm3H0P0KsfZSTe9x7DHzKa49JecWj8M"
 
 # Safe delays (in seconds)
-INVITE_DELAY = 5  # Delay between invites
-ACCOUNT_SWITCH_DELAY = 5  # Delay when switching accounts
-ERROR_DELAY = 5  # Delay after error
-MAX_RETRIES = 3  # Maximum retry attempts
+INVITE_DELAY = 5
+ACCOUNT_SWITCH_DELAY = 5
+ERROR_DELAY = 5
+MAX_RETRIES = 3
 
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO,
-    filename='telegram_bot.log'
+    handlers=[
+        logging.FileHandler('telegram_bot.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -65,14 +59,17 @@ class InviteProgress:
         self.current_number = 0
         self.successful = 0
         self.failed = 0
-        self.processed_numbers = set()  # Track already processed numbers
+        self.processed_numbers = set()
         self.account_stats = {phone: {'success': 0, 'failed': 0, 'errors': []} for phone in accounts}
         self.current_account = None
         self.status_message = None
         self.last_update_time = 0
+        self.chat_id = None
         
     async def update_status(self, message=None, force=False):
-        """Update status message with current progress"""
+        if not self.chat_id:
+            return
+            
         current_time = time.time()
         if not force and current_time - self.last_update_time < 3:
             return
@@ -102,48 +99,49 @@ class InviteProgress:
             
         try:
             if self.status_message is None:
-                self.status_message = await bot.send_message(
-                    self.status_message.chat_id,
-                    status
-                )
+                self.status_message = await bot.send_message(self.chat_id, status)
             else:
                 await self.status_message.edit(status)
         except Exception as e:
             logger.error(f"Error updating status: {str(e)}")
 
-# File handling functions
 def ensure_directories():
-    """Ensure all required directories exist"""
     os.makedirs('sessions', exist_ok=True)
     os.makedirs('logs', exist_ok=True)
 
 def load_admins():
-    """Load admin list from file"""
-    if os.path.exists(ADMINS_FILE):
-        with open(ADMINS_FILE, 'r') as f:
-            return json.load(f)
+    try:
+        if os.path.exists(ADMINS_FILE):
+            with open(ADMINS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading admins: {str(e)}")
     return {"admins": []}
 
 def save_admins(admins):
-    """Save admin list to file"""
-    with open(ADMINS_FILE, 'w') as f:
-        json.dump(admins, f)
+    try:
+        with open(ADMINS_FILE, 'w') as f:
+            json.dump(admins, f)
+    except Exception as e:
+        logger.error(f"Error saving admins: {str(e)}")
 
 def load_sessions():
-    """Load user sessions from file"""
-    if os.path.exists(SESSIONS_FILE):
-        with open(SESSIONS_FILE, 'r') as f:
-            return json.load(f)
+    try:
+        if os.path.exists(SESSIONS_FILE):
+            with open(SESSIONS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading sessions: {str(e)}")
     return {}
 
 def save_sessions():
-    """Save user sessions to file"""
-    with open(SESSIONS_FILE, 'w') as f:
-        json.dump(user_sessions, f)
+    try:
+        with open(SESSIONS_FILE, 'w') as f:
+            json.dump(user_sessions, f)
+    except Exception as e:
+        logger.error(f"Error saving sessions: {str(e)}")
 
-# Decorators
 def admin_only(func):
-    """Decorator to restrict access to admins only"""
     async def wrapper(event):
         user_id = event.sender_id
         admins = load_admins()
@@ -154,7 +152,6 @@ def admin_only(func):
     return wrapper
 
 def require_session(func):
-    """Decorator to require at least one active session"""
     async def wrapper(event):
         user_id = event.sender_id
         if not has_sessions(user_id):
@@ -166,13 +163,10 @@ def require_session(func):
         return await func(event)
     return wrapper
 
-# Helper functions
 def has_sessions(user_id):
-    """Check if user has any active sessions"""
     return user_id in user_sessions and len(user_sessions[user_id]) > 0
 
 async def get_pagination_buttons(accounts, page=0, items_per_page=5):
-    """Generate pagination buttons for account list"""
     total_pages = (len(accounts) - 1) // items_per_page + 1
     buttons = []
     start_idx = page * items_per_page
@@ -192,10 +186,8 @@ async def get_pagination_buttons(accounts, page=0, items_per_page=5):
     
     return buttons
 
-# Command handlers
 @bot.on(events.NewMessage(pattern='/start'))
 async def start_handler(event):
-    """Handle /start command"""
     user_id = event.sender_id
     admins = load_admins()
     
@@ -226,7 +218,6 @@ async def start_handler(event):
 @bot.on(events.NewMessage(pattern='/addadmin'))
 @admin_only
 async def add_admin_handler(event):
-    """Handle /addadmin command"""
     try:
         user_id = int(event.text.split()[1])
         admins = load_admins()
@@ -242,7 +233,6 @@ async def add_admin_handler(event):
 @bot.on(events.NewMessage(pattern='/removeadmin'))
 @admin_only
 async def remove_admin_handler(event):
-    """Handle /removeadmin command"""
     try:
         user_id = int(event.text.split()[1])
         admins = load_admins()
@@ -255,11 +245,9 @@ async def remove_admin_handler(event):
     except (IndexError, ValueError):
         await event.respond("❌ Please provide a valid user ID\nFormat: /removeadmin user_id")
 
-# Button handlers
 @bot.on(events.CallbackQuery(pattern='help'))
 @admin_only
 async def help_callback(event):
-    """Handle help button press"""
     help_text = (
         "🤖 **Bot Features and Instructions:**\n\n"
         "1️⃣ **Connect Account** (📱)\n"
@@ -286,7 +274,6 @@ async def help_callback(event):
 @bot.on(events.CallbackQuery(pattern='connect'))
 @admin_only
 async def connect_callback(event):
-    """Handle connect account button press"""
     user_id = event.sender_id
     user_states[user_id] = {'state': 'awaiting_phone', 'attempts': 0}
     
@@ -298,7 +285,6 @@ async def connect_callback(event):
 @bot.on(events.NewMessage(func=lambda e: user_states.get(e.sender_id, {}).get('state') == 'awaiting_phone'))
 @admin_only
 async def phone_handler(event):
-    """Handle phone number input"""
     user_id = event.sender_id
     phone = event.text.strip()
     
@@ -404,7 +390,6 @@ async def code_handler(event):
 @bot.on(events.CallbackQuery(pattern='listaccount'))
 @admin_only
 async def list_callback(event):
-    """Handle list accounts button press"""
     user_id = event.sender_id
     if not has_sessions(user_id):
         await event.edit("📱 No accounts connected yet!")
@@ -416,7 +401,6 @@ async def list_callback(event):
 @bot.on(events.CallbackQuery(pattern=r'delete_.*'))
 @admin_only
 async def delete_callback(event):
-    """Handle delete account button press"""
     phone = event.data.decode('utf-8').split('_')[1]
     buttons = [
         [
@@ -429,7 +413,6 @@ async def delete_callback(event):
 @bot.on(events.CallbackQuery(pattern=r'confirmdelete_.*'))
 @admin_only
 async def confirm_delete_callback(event):
-    """Handle delete confirmation button press"""
     user_id = event.sender_id
     phone = event.data.decode('utf-8').split('_')[1]
     if phone in user_sessions[user_id]:
@@ -443,22 +426,20 @@ async def confirm_delete_callback(event):
 @admin_only
 @require_session
 async def invite_callback(event):
-    """Handle invite button press"""
     user_id = event.sender_id
     user_states[user_id] = {'state': 'awaiting_file'}
     
     await event.edit(
         "📁 Please send a .txt or .vcf file containing phone numbers.\n\n"
         "📝 Format .txt yang benar:\n"
-        "2727272\n"
-        "2882286\n\n"
+        "+1234567890\n"
+        "+9876543210\n\n"
         "⚠️ Satu nomor per baris, tanpa karakter tambahan"
     )
 
 @bot.on(events.NewMessage(func=lambda e: user_states.get(e.sender_id, {}).get('state') == 'awaiting_file'))
 @admin_only
 async def file_handler(event):
-    """Handle file upload for invites"""
     user_id = event.sender_id
     
     if not event.file:
@@ -470,35 +451,30 @@ async def file_handler(event):
     
     try:
         if file_path.endswith('.txt'):
-            with open(file_path, 'r') as f:
-                # Read lines and process them
+            with open(file_path, 'r', encoding='utf-8') as f:
                 raw_numbers = [line.strip() for line in f if line.strip()]
                 
-                # Validate format
                 for num in raw_numbers:
-                    # Check if number only contains digits and optionally starts with +
                     if not (num.isdigit() or (num.startswith('+') and num[1:].isdigit())):
                         await event.respond(
                             "❌ Invalid file format!\n\n"
                             "📝 Format yang benar:\n"
-                            "2727272\n"
-                            "2882286\n\n"
+                            "+1234567890\n"
+                            "+9876543210\n\n"
                             "⚠️ Satu nomor per baris, tanpa karakter tambahan"
                         )
                         return
                     
-                    # Add + if not present
                     if not num.startswith('+'):
                         num = '+' + num
                     numbers.append(num)
         
         elif file_path.endswith('.vcf'):
-            with open(file_path, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 for vcard in vobject.readComponents(f.read()):
                     if hasattr(vcard, 'tel'):
                         for tel in vcard.tel_list:
                             num = tel.value
-                            # Clean the number
                             num = ''.join(filter(lambda x: x.isdigit() or x == '+', num))
                             if not num.startswith('+'):
                                 num = '+' + num
@@ -530,7 +506,6 @@ async def file_handler(event):
 @bot.on(events.CallbackQuery(pattern='set_invite_count'))
 @admin_only
 async def set_count_callback(event):
-    """Handle setting invite count"""
     user_id = event.sender_id
     state = user_states[user_id]
     
@@ -543,7 +518,6 @@ async def set_count_callback(event):
 @bot.on(events.NewMessage(func=lambda e: user_states.get(e.sender_id, {}).get('state') == 'awaiting_invite_count'))
 @admin_only
 async def invite_count_handler(event):
-    """Handle invite count input"""
     user_id = event.sender_id
     state = user_states[user_id]
     
@@ -565,7 +539,6 @@ async def invite_count_handler(event):
 @bot.on(events.NewMessage(func=lambda e: user_states.get(e.sender_id, {}).get('state') == 'awaiting_group_link'))
 @admin_only
 async def group_link_handler(event):
-    """Handle group link input"""
     user_id = event.sender_id
     state = user_states[user_id]
     group_link = event.text.strip()
@@ -577,7 +550,6 @@ async def group_link_handler(event):
     state['group_link'] = group_link
     state['state'] = 'selecting_accounts'
     
-    # Create account selection buttons
     accounts = list(user_sessions[user_id].keys())
     buttons = [[Button.inline("✅ Use All Accounts", "use_all_accounts")]]
     
@@ -597,7 +569,6 @@ async def group_link_handler(event):
 @bot.on(events.CallbackQuery(pattern=r'select_.*'))
 @admin_only
 async def select_account_callback(event):
-    """Handle account selection for invites"""
     user_id = event.sender_id
     state = user_states[user_id]
     phone = event.data.decode('utf-8').split('_')[1]
@@ -607,7 +578,6 @@ async def select_account_callback(event):
     else:
         state['selected_accounts'].add(phone)
     
-    # Update buttons to show selection
     accounts = list(user_sessions[user_id].keys())
     buttons = [[Button.inline("✅ Use All Accounts", "use_all_accounts")]]
     
@@ -626,7 +596,6 @@ async def select_account_callback(event):
 @bot.on(events.CallbackQuery(pattern='custom_done'))
 @admin_only
 async def custom_done_callback(event):
-    """Handle completion of custom account selection"""
     user_id = event.sender_id
     state = user_states[user_id]
     
@@ -636,12 +605,16 @@ async def custom_done_callback(event):
     
     selected_phones = list(state['selected_accounts'])
     await event.edit("🔄 Starting invite process...")
-    await process_invites(event, user_id, selected_phones, state['numbers'][:state['invite_count']], state['group_link'])
+    
+    progress = InviteProgress(state['invite_count'], selected_phones)
+    progress.chat_id = event.chat_id
+    progress.status_message = await event.get_message()
+    
+    await process_invites(event, user_id, selected_phones, state['numbers'][:state['invite_count']], state['group_link'], progress)
 
 @bot.on(events.CallbackQuery(pattern='custom_cancel'))
 @admin_only
 async def custom_cancel_callback(event):
-    """Handle cancellation of account selection"""
     user_id = event.sender_id
     user_states.pop(user_id, None)
     await event.edit("❌ Invite process cancelled")
@@ -649,18 +622,20 @@ async def custom_cancel_callback(event):
 @bot.on(events.CallbackQuery(pattern='use_all_accounts'))
 @admin_only
 async def use_all_accounts_callback(event):
-    """Handle using all accounts for invites"""
     user_id = event.sender_id
     state = user_states[user_id]
     selected_phones = list(user_sessions[user_id].keys())
     
     await event.edit("🔄 Starting invite process...")
-    await process_invites(event, user_id, selected_phones, state['numbers'][:state['invite_count']], state['group_link'])
+    
+    progress = InviteProgress(state['invite_count'], selected_phones)
+    progress.chat_id = event.chat_id
+    progress.status_message = await event.get_message()
+    
+    await process_invites(event, user_id, selected_phones, state['numbers'][:state['invite_count']], state['group_link'], progress)
 
 async def process_single_invite(client, number, group_link, progress):
-    """Process single invite to group via phone number"""
     try:
-        # Create contact object
         contact = InputPhoneContact(
             client_id=0,
             phone=number,
@@ -668,41 +643,34 @@ async def process_single_invite(client, number, group_link, progress):
             last_name=""
         )
 
-        # Add contact temporarily
-        contacts = await client(functions.contacts.ImportContactsRequest([contact]))
+        try:
+            contacts = await client(functions.contacts.ImportContactsRequest([contact]))
 
-        if not contacts.users:
-            raise Exception("No Telegram account found for this number")
+            if not contacts.users:
+                raise Exception("No Telegram account found for this number")
 
-        # Try to add to group
-        await client(InviteToChannelRequest(
-            channel=group_link,
-            users=[contacts.users[0]]
-        ))
+            await client(InviteToChannelRequest(
+                channel=group_link,
+                users=[contacts.users[0]]
+            ))
 
-        # Remove the temporarily added contact
-        await client(functions.contacts.DeleteContactsRequest(
-            id=[user.id for user in contacts.users]
-        ))
+            await client(functions.contacts.DeleteContactsRequest(
+                id=[user.id for user in contacts.users]
+            ))
 
-        return True
+            return True
 
-    except UserPrivacyRestrictedError:
-        raise Exception("User privacy settings prevent invitation")
-    except UserNotMutualContactError:
-        raise Exception("User must be mutual contact first")
-    except FloodWaitError as e:
-        raise FloodWaitError(e.seconds)
+        except FloodWaitError as e:
+            raise
+        except Exception as e:
+            raise Exception(f"Failed to invite: {str(e)}")
+
     except Exception as e:
-        raise Exception(f"Failed to invite: {str(e)}")
+        raise
 
-async def process_invites(event, user_id, selected_phones, numbers, group_link):
-    """Main function to process invites with flood protection"""
-    progress = InviteProgress(len(numbers), selected_phones)
-    progress.status_message = await event.respond("🔄 Initializing invite process...")
-    
+async def process_invites(event, user_id, selected_phones, numbers, group_link, progress):
     current_number_index = 0
-    successful_invites = set()  # Track successful invites
+    successful_invites = set()
     
     for phone in selected_phones:
         if current_number_index >= len(numbers):
@@ -712,19 +680,14 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
         await progress.update_status("Connecting to account...", force=True)
         
         try:
-            # Load session string
             session_string = user_sessions[user_id][phone]
-            
-            # Create client from session string
             client = TelegramClient(StringSession(session_string), API_ID, API_HASH)
             await client.connect()
             
-            # Check authorization
             if not await client.is_user_authorized():
                 progress.account_stats[phone]['errors'].append("Session expired, please reconnect account")
                 continue
             
-            # Join group first
             try:
                 await progress.update_status("Joining group...")
                 await client(JoinChannelRequest(group_link))
@@ -736,12 +699,10 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
                 await progress.update_status()
                 continue
             
-            # Process invites with this account
             invite_count = 0
-            while current_number_index < len(numbers) and invite_count < 35:  # Limit per account
+            while current_number_index < len(numbers) and invite_count < 35:
                 number = numbers[current_number_index]
                 
-                # Skip if already invited
                 if number in successful_invites:
                     current_number_index += 1
                     continue
@@ -756,13 +717,13 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
                     success = await process_single_invite(client, number, group_link, progress)
                     
                     if success:
-                        successful_invites.add(number)  # Track successful invite
+                        successful_invites.add(number)
                         progress.successful += 1
                         progress.account_stats[phone]['success'] += 1
                         invite_count += 1
                         await progress.update_status(f"✅ Successfully invited {number}")
                     
-                    await asyncio.sleep(INVITE_DELAY)  # Safe delay between invites
+                    await asyncio.sleep(INVITE_DELAY)
                     
                 except FloodWaitError as e:
                     progress.account_stats[phone]['errors'].append(f"FloodWait: {e.seconds}s")
@@ -774,12 +735,12 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
                     progress.account_stats[phone]['failed'] += 1
                     progress.account_stats[phone]['errors'].append(str(e))
                     await progress.update_status(f"❌ Error inviting {number}: {str(e)}")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(ERROR_DELAY)
                     
                 current_number_index += 1
             
             await client.disconnect()
-            await asyncio.sleep(ACCOUNT_SWITCH_DELAY)  # Safe delay before switching accounts
+            await asyncio.sleep(ACCOUNT_SWITCH_DELAY)
             
         except Exception as e:
             logger.error(f"Error with account {phone}: {str(e)}")
@@ -787,7 +748,6 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
             await progress.update_status(f"❌ Error with account {phone}: {str(e)}")
             await asyncio.sleep(ERROR_DELAY)
     
-    # Final report
     final_report = (
         "📊 **Invite Process Completed**\n\n"
         f"📱 Total Numbers Processed: {len(numbers)}\n"
@@ -804,17 +764,15 @@ async def process_invites(event, user_id, selected_phones, numbers, group_link):
         )
         if stats['errors']:
             final_report += "  ⚠️ Errors encountered:\n"
-            for error in stats['errors'][-3:]:  # Show last 3 errors
+            for error in stats['errors'][-3:]:
                 final_report += f"    - {error}\n"
                 
     await progress.status_message.edit(final_report)
     user_states.pop(user_id, None)
 
-# Error Handler
 @bot.on(events.NewMessage(pattern='/cancel'))
 @admin_only
 async def cancel_handler(event):
-    """Handle cancel command to reset user state"""
     user_id = event.sender_id
     if user_id in user_states:
         user_states.pop(user_id, None)
@@ -822,41 +780,29 @@ async def cancel_handler(event):
     else:
         await event.respond("ℹ️ No active operation to cancel.")
 
-# Main function to run the bot
 def main():
-    """Main function to start the bot"""
-    # Ensure all required directories exist
     ensure_directories()
     
-    # Load saved data
     global user_sessions
     user_sessions = load_sessions()
     
-    # Print startup message
     print("🤖 Telegram Manager Bot is starting...")
     print("✨ Made with Telethon")
     print("⚡ Bot is ready to use!")
     
     try:
         print("📡 Starting message handler...")
-        # Create and get event loop
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(bot.run_until_disconnected())
+        bot.run_until_disconnected()
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
         logger.error(f"Bot crashed: {str(e)}")
-    finally:
-        loop.close()
 
-# Run the bot
 if __name__ == '__main__':
     try:
-        # Setup logging with proper file mode
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('bot.log', mode='a'),
+                logging.FileHandler('bot.log', mode='a', encoding='utf-8'),
                 logging.StreamHandler()
             ]
         )
