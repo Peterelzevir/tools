@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, Optional
 
 # Import local modules
-from config import API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, START_MESSAGE, HELP_MESSAGE
+from config import API_ID, API_HASH, BOT_TOKEN, ADMIN_IDS, START_MESSAGE, HELP_MESSAGE, DB_NAME
 from database import Database
 from account_manager import AccountManager
 from invite_manager import InviteManager
